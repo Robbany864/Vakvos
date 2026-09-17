@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>Termux CPanel — Mini Web Hosting</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: { 950: '#020617' },
+            glass: 'rgba(30,41,59,0.55)'
+          },
+          backdropBlur: { xs: '2px' }
+        }
+      }
+    };
+  </script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- Monaco Editor -->
+  <link rel="stylesheet" data-name="vs/editor/editor.main"
+        href="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+
+  <link rel="stylesheet" href="/panel/css/styles.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased">
+
+  <!-- Background gradient -->
+  <div class="fixed inset-0 -z-10 bg-gradient-to-br from-slate-950 via-indigo-950/40 to-slate-950"></div>
+  <div class="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.15),transparent_55%)]"></div>
+
+  <!-- ── Layout ── -->
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-40 w-72 md:w-64 transform -translate-x-full md:translate-x-0 transition-transform duration-300 backdrop-blur-xl bg-slate-900/70 border-r border-white/10 flex flex-col">
+      <div class="p-5 border-b border-white/10">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+            <i data-lucide="server" class="w-6 h-6 text-white"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-lg leading-none">Termux CPanel</h1>
+            <p class="text-[11px] text-slate-400 mt-0.5">Cloudflare powered</p>
+          </div>
+        </div>
+      </div>
+
+      <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+        <button data-view="dashboard" class="nav-btn">
+          <i data-lucide="activity"></i><span>System Overview</span>
+        </button>
+        <button data-view="files" class="nav-btn">
+          <i data-lucide="folder-tree"></i><span>File Manager</span>
+        </button>
+        <button data-view="editor" class="nav-btn">
+          <i data-lucide="code-2"></i><span>Code Editor</span>
+        </button>
+        <button data-view="git" class="nav-btn">
+          <i data-lucide="git-branch"></i><span>GitHub Deployer</span>
+        </button>
+        <button data-view="tunnel" class="nav-btn">
+          <i data-lucide="cloud"></i><span>Cloudflare Tunnel</span>
+        </button>
+        <button data-view="logs" class="nav-btn">
+          <i data-lucide="terminal"></i><span>Application Logs</span>
+        </button>
+      </nav>
+
+      <div class="p-4 border-t border-white/10 text-[11px] text-slate-500">
+        <div id="sidebar-status" class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Connected</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Sidebar overlay (mobile) -->
+    <div id="overlay" class="fixed inset-0 bg-black/50 z-30 hidden md:hidden"></div>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 flex flex-col">
+
+      <!-- Topbar -->
+      <header class="sticky top-0 z-20 backdrop-blur-xl bg-slate-950/70 border-b border-white/10 px-4 md:px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <button id="menu-btn" class="md:hidden p-2 rounded-lg hover:bg-white/5">
+            <i data-lucide="menu" class="w-5 h-5"></i>
+          </button>
+          <h2 id="view-title" class="text-lg font-semibold">System Overview</h2>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="clock" class="hidden sm:block text-xs text-slate-400"></span>
+          <button id="refresh-btn" class="p-2 rounded-lg hover:bg-white/5" title="Refresh">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- View Container -->
+      <section class="flex-1 p-4 md:p-6 overflow-y-auto">
+
+        <!-- ── DASHBOARD ── -->
+        <div id="view-dashboard" class="view">
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6">
+            <div class="glass-card">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase text-slate-400">CPU</span>
+                <i data-lucide="cpu" class="w-4 h-4 text-indigo-400"></i>
+              </div>
+              <div class="text-2xl font-bold" id="stat-cpu">—</div>
+              <div class="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div id="bar-cpu" class="h-full bg-gradient-to-r from-indigo-400 to-violet-500 transition-all" style="width:0%"></div>
+              </div>
+            </div>
+
+            <div class="glass-card">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase text-slate-400">RAM</span>
+                <i data-lucide="memory-stick" class="w-4 h-4 text-emerald-400"></i>
+              </div>
+              <div class="text-2xl font-bold" id="stat-ram">—</div>
+              <div class="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div id="bar-ram" class="h-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all" style="width:0%"></div>
+              </div>
+            </div>
+
+            <div class="glass-card">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase text-slate-400">Storage</span>
+                <i data-lucide="hard-drive" class="w-4 h-4 text-amber-400"></i>
+              </div>
+              <div class="text-2xl font-bold" id="stat-storage">—</div>
+              <div class="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                <div id="bar-storage" class="h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all" style="width:0%"></div>
+              </div>
+            </div>
+
+            <div class="glass-card">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase text-slate-400">Uptime</span>
+                <i data-lucide="clock-4" class="w-4 h-4 text-pink-400"></i>
+              </div>
+              <div class="text-2xl font-bold" id="stat-uptime">—</div>
+              <div class="mt-3 text-xs text-slate-400" id="stat-node">Node.js</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="glass-card">
+              <h3 class="font-semibold mb-3 flex items-center gap-2">
+                <i data-lucide="server-cog" class="w-4 h-4 text-indigo-400"></i> System Info
+              </h3>
+              <dl id="sys-info" class="space-y-2 text-sm"></dl>
+            </div>
+
+            <div class="glass-card">
+              <h3 class="font-semibold mb-3 flex items-center gap-2">
+                <i data-lucide="globe" class="w-4 h-4 text-emerald-400"></i> Hosted Sites
+              </h3>
+              <div id="sites-list" class="space-y-2 text-sm max-h-72 overflow-y-auto"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── FILE MANAGER ── -->
+        <div id="view-files" class="view hidden">
+          <div class="glass-card mb-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="btn-new-folder" class="btn-secondary"><i data-lucide="folder-plus" class="w-4 h-4"></i> New Folder</button>
+              <button id="btn-new-file" class="btn-secondary"><i data-lucide="file-plus" class="w-4 h-4"></i> New File</button>
+              <button id="btn-upload" class="btn-primary"><i data-lucide="upload" class="w-4 h-4"></i> Upload</button>
+              <input type="file" id="file-input" class="hidden" multiple />
+            </div>
+            <div class="mt-3 flex items-center gap-2 text-sm">
+              <i data-lucide="folder-open" class="w-4 h-4 text-indigo-400"></i>
+              <span id="breadcrumb" class="font-mono text-xs text-slate-300">/www</span>
+            </div>
+          </div>
+
+          <div id="drop-zone" class="glass-card border-dashed border-2 border-white/10">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-xs uppercase text-slate-400 border-b border-white/10">
+                  <th class="py-2 pr-3">Name</th>
+                  <th class="py-2 pr-3 hidden sm:table-cell">Size</th>
+                  <th class="py-2 pr-3 hidden md:table-cell">Modified</th>
+                  <th class="py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="file-list"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ── CODE EDITOR ── -->
+        <div id="view-editor" class="view hidden">
+          <div class="glass-card mb-3 flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2 text-sm min-w-0">
+              <i data-lucide="file-code" class="w-4 h-4 text-indigo-400 shrink-0"></i>
+              <span id="editor-path" class="font-mono text-xs truncate">No file opened</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <select id="editor-lang" class="input-sm">
+                <option value="plaintext">Plain Text</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="json">JSON</option>
+                <option value="markdown">Markdown</option>
+                <option value="python">Python</option>
+                <option value="php">PHP</option>
+                <option value="shell">Shell</option>
+                <option value="yaml">YAML</option>
+              </select>
+              <button id="btn-save" class="btn-primary"><i data-lucide="save" class="w-4 h-4"></i> Save</button>
+            </div>
+          </div>
+          <div id="monaco-container" class="rounded-xl overflow-hidden border border-white/10" style="height: calc(100vh - 240px);"></div>
+        </div>
+
+        <!-- ── GITHUB ── -->
+        <div id="view-git" class="view hidden">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="glass-card">
+              <h3 class="font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="git-branch-plus" class="w-4 h-4 text-indigo-400"></i> Deploy from GitHub
+              </h3>
+
+              <label class="lbl">Repository URL</label>
+              <input id="git-url" class="input" placeholder="https://github.com/user/repo.git" />
+
+              <label class="lbl mt-3">Branch</label>
+              <input id="git-branch" class="input" value="main" />
+
+              <label class="lbl mt-3">Site Name (optional)</label>
+              <input id="git-name" class="input" placeholder="mysite" />
+
+              <label class="lbl mt-3">Personal Access Token (private repos)</label>
+              <input id="git-token" class="input" type="password" placeholder="ghp_..." />
+
+              <button id="btn-git-clone" class="btn-primary w-full mt-4">
+                <i data-lucide="download-cloud" class="w-4 h-4"></i> Clone / Deploy
+              </button>
+            </div>
+
+            <div class="glass-card">
+              <h3 class="font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="git-pull-request" class="w-4 h-4 text-emerald-400"></i> Update Existing Site
+              </h3>
+
+              <label class="lbl">Site Name</label>
+              <select id="git-pull-site" class="input"></select>
+
+              <label class="lbl mt-3">Token (optional, for private)</label>
+              <input id="git-pull-token" class="input" type="password" />
+
+              <button id="btn-git-pull" class="btn-primary w-full mt-4">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i> Pull Latest
+              </button>
+            </div>
+          </div>
+
+          <div class="glass-card mt-4">
+            <h3 class="font-semibold mb-3">Deployed Sites</h3>
+            <div id="deployed-sites" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+          </div>
+        </div>
+
+        <!-- ── TUNNEL ── -->
+        <div id="view-tunnel" class="view hidden">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="glass-card">
+              <h3 class="font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i> Quick Tunnel
+              </h3>
+              <p class="text-xs text-slate-400 mb-3">Instant random <code>*.trycloudflare.com</code> URL.</p>
+
+              <label class="lbl">Local Port</label>
+              <input id="quick-port" class="input" type="number" value="3000" min="1" max="65535" />
+
+              <div class="flex gap-2 mt-4">
+                <button id="btn-quick-start" class="btn-primary flex-1"><i data-lucide="play" class="w-4 h-4"></i> Start</button>
+                <button id="btn-quick-stop" class="btn-danger flex-1"><i data-lucide="square" class="w-4 h-4"></i> Stop</button>
+              </div>
+
+              <div id="quick-result" class="mt-4 hidden">
+                <label class="lbl">Public URL</label>
+                <div class="flex items-center gap-2">
+                  <input id="quick-url" class="input font-mono text-xs" readonly />
+                  <button id="btn-copy-url" class="btn-secondary"><i data-lucide="copy" class="w-4 h-4"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-card">
+              <h3 class="font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="cloud-cog" class="w-4 h-4 text-indigo-400"></i> Named Tunnel
+              </h3>
+              <p class="text-xs text-slate-400 mb-3">Persistent tunnel with custom domain.</p>
+
+              <label class="lbl">Tunnel Name</label>
+              <input id="named-name" class="input" placeholder="termux-server" />
+
+              <div class="flex gap-2 mt-4">
+                <button id="btn-named-start" class="btn-primary flex-1"><i data-lucide="play" class="w-4 h-4"></i> Start</button>
+                <button id="btn-named-stop" class="btn-danger flex-1"><i data-lucide="square" class="w-4 h-4"></i> Stop</button>
+              </div>
+
+              <button id="btn-named-list" class="btn-secondary w-full mt-3"><i data-lucide="list" class="w-4 h-4"></i> List Tunnels</button>
+
+              <div id="named-list" class="mt-3 text-xs space-y-1"></div>
+            </div>
+          </div>
+
+          <div class="glass-card mt-4">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold flex items-center gap-2">
+                <i data-lucide="terminal-square" class="w-4 h-4 text-emerald-400"></i> Tunnel Logs
+              </h3>
+              <button id="btn-refresh-logs" class="btn-secondary"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh</button>
+            </div>
+            <pre id="tunnel-logs" class="font-mono text-[11px] text-slate-300 bg-black/40 rounded-lg p-3 max-h-80 overflow-auto whitespace-pre-wrap"></pre>
+          </div>
+        </div>
+
+        <!-- ── LOGS ── -->
+        <div id="view-logs" class="view hidden">
+          <div class="glass-card">
+            <h3 class="font-semibold mb-3 flex items-center gap-2">
+              <i data-lucide="scroll-text" class="w-4 h-4 text-indigo-400"></i> Application Log
+            </h3>
+            <pre id="app-logs" class="font-mono text-[11px] text-slate-300 bg-black/40 rounded-lg p-3 max-h-[70vh] overflow-auto whitespace-pre-wrap"></pre>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toasts" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+  <!-- Modal -->
+  <div id="modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="glass-card w-full max-w-md">
+      <h3 id="modal-title" class="font-semibold text-lg mb-3">Title</h3>
+      <p id="modal-message" class="text-sm text-slate-300 mb-4">Message</p>
+      <input id="modal-input" class="input hidden" />
+      <div class="flex gap-2 justify-end mt-2">
+        <button id="modal-cancel" class="btn-secondary">Cancel</button>
+        <button id="modal-confirm" class="btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/panel/js/app.js"></script>
+  <script src="/panel/js/editor.js"></script>
+</body>
+</html>
